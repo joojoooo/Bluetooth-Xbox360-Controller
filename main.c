@@ -9,6 +9,7 @@
 
 tusb_desc_device_t desc_device;
 
+uint8_t command_buf[12] = {0};
 uint8_t temp_buf[321];
 uint8_t buf_pool[BUF_COUNT][64];
 uint8_t buf_owner[BUF_COUNT] = {0};
@@ -22,7 +23,6 @@ uint8_t *get_vdr_buf(uint8_t daddr);
 int main(void)
 {
   board_init();
-  printf("started\r\n");
   tuh_init(BOARD_TUH_RHPORT);
   while (1)
   {
@@ -125,11 +125,6 @@ uint16_t count_interface_total_len(tusb_desc_interface_t const *desc_itf, uint8_
   return len;
 }
 
-void test(tuh_xfer_t *xfer)
-{
-  printf("Sent Inquiry pad presence");
-}
-
 void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, uint16_t max_len)
 {
   uint8_t const *p_desc = (uint8_t const *)desc_itf;
@@ -144,7 +139,7 @@ void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, ui
     // Endpoint descriptor
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const *desc_ep = (tusb_desc_endpoint_t const *)p_desc;
-    if (TUSB_DESC_ENDPOINT != desc_ep->bDescriptorType || tu_edpt_number(desc_ep->bEndpointAddress) != 1)
+    if (TUSB_DESC_ENDPOINT != desc_ep->bDescriptorType)
       return;
     if (tu_edpt_number(desc_ep->bEndpointAddress) != 1)
       continue;
@@ -167,35 +162,33 @@ void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, ui
               .user_data = (uintptr_t)buf, // since buffer is not available in callback, use user data to store the buffer
           };
       tuh_edpt_xfer(&xfer);
-
-      printf("Listen to [ITF: %d EP: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
+      // printf("Listen to [ITF: %d EP: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
     }
     else
     {
-      buf[0] = 0x08;
-      buf[1] = 0x00;
-      buf[2] = 0x0F;
-      buf[3] = 0xC0;
-      buf[4] = 0x00;
-      buf[5] = 0x00;
-      buf[6] = 0x00;
-      buf[7] = 0x00;
-      buf[8] = 0x00;
-      buf[9] = 0x00;
-      buf[10] = 0x00;
-      buf[11] = 0x00;
+      // Inquiry pad presence
+      command_buf[0] = 0x08;
+      command_buf[1] = 0x00;
+      command_buf[2] = 0x0F;
+      command_buf[3] = 0xC0;
+      command_buf[4] = 0x00;
+      command_buf[5] = 0x00;
+      command_buf[6] = 0x00;
+      command_buf[7] = 0x00;
+      command_buf[8] = 0x00;
+      command_buf[9] = 0x00;
+      command_buf[10] = 0x00;
+      command_buf[11] = 0x00;
       tuh_xfer_t xfer =
           {
               .daddr = daddr,
               .ep_addr = desc_ep->bEndpointAddress,
-              .buflen = 12,
-              .buffer = buf,
-              .complete_cb = test,
-              .user_data = (uintptr_t)buf, // since buffer is not available in callback, use user data to store the buffer
+              .buflen = sizeof(command_buf),
+              .buffer = command_buf,
+              .complete_cb = NULL,
+              .user_data = 0,
           };
       tuh_edpt_xfer(&xfer);
-
-      printf("Sending Inquiry pad presence [ITF: %d EP: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
     }
   }
 }
@@ -216,10 +209,10 @@ https://www.partsnotincluded.com/understanding-the-xbox-360-wired-controllers-us
  [3]     1 bit per button, bit 3 unused, 7 buttons
  [4]     LeftTrigger 0 (released) 255 (fully pressed)
  [5]     RightTrigger 0 (released) 255 (fully pressed)
- [6.7]   Left joystick X, 16 bit signed little endian
- [8.9]   Left joystick Y, 16 bit signed little endian
- [10.11] Right joystick X, 16 bit signed little endian
- [12.13] Right joystick Y, 16 bit signed little endian
+ [6.7]   Left joystick X, 16 bit signed little endian (-32.768, +32.767)
+ [8.9]   Left joystick Y, 16 bit signed little endian (-32.768, +32.767)
+ [10.11] Right joystick X, 16 bit signed little endian (-32.768, +32.767)
+ [12.13] Right joystick Y, 16 bit signed little endian (-32.768, +32.767)
 */
 // Inquiry pad presence https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L1369
 // LEDs control: https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L1581
@@ -237,30 +230,63 @@ void vdr_report_received(tuh_xfer_t *xfer)
     {
       if ((buf[1] & 0x80) != 0)
       {
-        // Set LEDs
-        printf("Pad present!\r\n");
-      }
-      else
-      {
-        printf("Pad NOT present\r\n");
+        /*
+        Set LEDs buf[3] = 0x40 + number below
+         0: off
+         1: all blink, then previous setting
+         2: 1/top-left blink, then on
+         3: 2/top-right blink, then on
+         4: 3/bottom-left blink, then on
+         5: 4/bottom-right blink, then on
+         6: 1/top-left on
+         7: 2/top-right on
+         8: 3/bottom-left on
+         9: 4/bottom-right on
+        10: rotate
+        11: blink, based on previous setting
+        12: slow blink, based on previous setting
+        13: rotate with two lights
+        14: persistent slow all blink
+        15: blink once, then previous setting
+        */
+        // Gamepad connected, turn LEDs off
+        command_buf[0] = 0x00;
+        command_buf[1] = 0x00;
+        command_buf[2] = 0x08;
+        command_buf[3] = 0x40;
+        command_buf[4] = 0x00;
+        command_buf[5] = 0x00;
+        command_buf[6] = 0x00;
+        command_buf[7] = 0x00;
+        command_buf[8] = 0x00;
+        command_buf[9] = 0x00;
+        command_buf[10] = 0x00;
+        command_buf[11] = 0x00;
+        tuh_xfer_t xfer =
+            {
+                .daddr = 1,
+                .ep_addr = 0x01,
+                .buflen = sizeof(command_buf),
+                .buffer = command_buf,
+                .complete_cb = NULL,
+                .user_data = 0,
+            };
+        tuh_edpt_xfer(&xfer);
       }
     }
     else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
     {
+      /*
       printf("EP: %02x Data:\r\n", tu_edpt_number(xfer->ep_addr));
       for (uint32_t i = 2; i <= 5; i++)
       {
         printf("%02X ", input_buf[i]);
       }
-      printf("%02X%02X/", input_buf[6], input_buf[7]);
-      printf("%02X%02X ", input_buf[8], input_buf[9]);
-      printf("%02X%02X/", input_buf[10], input_buf[11]);
-      printf("%02X%02X\r\n", input_buf[12], input_buf[13]);
+      printf("Lx:%d,Ly:%d\r\n", *((int16_t *)(input_buf + 6)), *((int16_t *)(input_buf + 8)));
+      */
     }
   }
 
-  // continue to submit transfer, with updated buffer
-  // other field remain the same
   xfer->buflen = 64;
   xfer->buffer = buf;
   tuh_edpt_xfer(xfer);
