@@ -125,6 +125,11 @@ uint16_t count_interface_total_len(tusb_desc_interface_t const *desc_itf, uint8_
   return len;
 }
 
+void test(tuh_xfer_t *xfer)
+{
+  printf("Sent Inquiry pad presence");
+}
+
 void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, uint16_t max_len)
 {
   uint8_t const *p_desc = (uint8_t const *)desc_itf;
@@ -139,18 +144,19 @@ void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, ui
     // Endpoint descriptor
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const *desc_ep = (tusb_desc_endpoint_t const *)p_desc;
-    if (TUSB_DESC_ENDPOINT != desc_ep->bDescriptorType)
+    if (TUSB_DESC_ENDPOINT != desc_ep->bDescriptorType || tu_edpt_number(desc_ep->bEndpointAddress) != 1)
+      return;
+    if (tu_edpt_number(desc_ep->bEndpointAddress) != 1)
+      continue;
+
+    if (!tuh_edpt_open(daddr, desc_ep))
       return;
 
+    uint8_t *buf = get_vdr_buf(daddr);
+    if (!buf)
+      return;
     if (tu_edpt_dir(desc_ep->bEndpointAddress) == TUSB_DIR_IN)
     {
-      if (!tuh_edpt_open(daddr, desc_ep))
-        return;
-
-      uint8_t *buf = get_vdr_buf(daddr);
-      if (!buf)
-        return; // out of memory
-
       tuh_xfer_t xfer =
           {
               .daddr = daddr,
@@ -160,41 +166,103 @@ void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, ui
               .complete_cb = vdr_report_received,
               .user_data = (uintptr_t)buf, // since buffer is not available in callback, use user data to store the buffer
           };
-
-      // submit transfer for this EP
       tuh_edpt_xfer(&xfer);
 
-      printf("Listen to [itf: %d ep: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
+      printf("Listen to [ITF: %d EP: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
     }
     else
     {
+      buf[0] = 0x08;
+      buf[1] = 0x00;
+      buf[2] = 0x0F;
+      buf[3] = 0xC0;
+      buf[4] = 0x00;
+      buf[5] = 0x00;
+      buf[6] = 0x00;
+      buf[7] = 0x00;
+      buf[8] = 0x00;
+      buf[9] = 0x00;
+      buf[10] = 0x00;
+      buf[11] = 0x00;
+      tuh_xfer_t xfer =
+          {
+              .daddr = daddr,
+              .ep_addr = desc_ep->bEndpointAddress,
+              .buflen = 12,
+              .buffer = buf,
+              .complete_cb = test,
+              .user_data = (uintptr_t)buf, // since buffer is not available in callback, use user data to store the buffer
+          };
+      tuh_edpt_xfer(&xfer);
+
+      printf("Sending Inquiry pad presence [ITF: %d EP: %02x]\r\n", desc_itf->bInterfaceNumber, tu_edpt_number(desc_ep->bEndpointAddress));
     }
   }
 }
 
+/*
+USB Data format:
+https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L810
+https://www.partsnotincluded.com/understanding-the-xbox-360-wired-controllers-usb-data/
+
+ [0] 0x08 Presence change
+ [1] 0x80 Present 0x00 Not present 0x01 Valid input check
+ [2] ?? unknown
+ [3] 0xf0 Always this value when valid input
+
+ [0]     0x00 Valid input check
+ [1]     0x13 Always this value when valid input
+ [2]     1 bit per button, 8 buttons
+ [3]     1 bit per button, bit 3 unused, 7 buttons
+ [4]     LeftTrigger 0 (released) 255 (fully pressed)
+ [5]     RightTrigger 0 (released) 255 (fully pressed)
+ [6.7]   Left joystick X, 16 bit signed little endian
+ [8.9]   Left joystick Y, 16 bit signed little endian
+ [10.11] Right joystick X, 16 bit signed little endian
+ [12.13] Right joystick Y, 16 bit signed little endian
+*/
+// Inquiry pad presence https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L1369
+// LEDs control: https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L1581
+// Power OFF: https://github.com/torvalds/linux/blob/610a9b8f49fbcf1100716370d3b5f6f884a2835a/drivers/input/joystick/xpad.c#L1762
 void vdr_report_received(tuh_xfer_t *xfer)
 {
   // Note: not all field in xfer is available for use (i.e filled by tinyusb stack) in callback to save sram
   // For instance, xfer->buffer is NULL. We have used user_data to store buffer when submitted callback
   uint8_t *buf = (uint8_t *)xfer->user_data;
+  uint8_t *input_buf = &buf[4];
 
   if (xfer->result == XFER_RESULT_SUCCESS)
   {
-    printf("ep: %02x", tu_edpt_number(xfer->ep_addr));
-    for (uint32_t i = 0; i < xfer->actual_len; i++)
+    if (xfer->actual_len >= 2 && buf[0] & 0x08)
     {
-      if (i % 16 == 0)
-        printf("\r\n  ");
-      printf("%02X ", buf[i]);
+      if ((buf[1] & 0x80) != 0)
+      {
+        // Set LEDs
+        printf("Pad present!\r\n");
+      }
+      else
+      {
+        printf("Pad NOT present\r\n");
+      }
     }
-    printf("\r\n");
+    else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
+    {
+      printf("EP: %02x Data:\r\n", tu_edpt_number(xfer->ep_addr));
+      for (uint32_t i = 2; i <= 5; i++)
+      {
+        printf("%02X ", input_buf[i]);
+      }
+      printf("%02X%02X/", input_buf[6], input_buf[7]);
+      printf("%02X%02X ", input_buf[8], input_buf[9]);
+      printf("%02X%02X/", input_buf[10], input_buf[11]);
+      printf("%02X%02X\r\n", input_buf[12], input_buf[13]);
+    }
   }
 
   // continue to submit transfer, with updated buffer
   // other field remain the same
   xfer->buflen = 64;
   xfer->buffer = buf;
-
   tuh_edpt_xfer(xfer);
 }
 
