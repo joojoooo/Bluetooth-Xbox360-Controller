@@ -26,26 +26,34 @@ void setup() {
   bleGamepad.begin(&bleGamepadConfig);  // Simulation controls, special buttons and hats 2/3/4 are disabled by default
 }
 
-uint8_t padReport[12] = { 0 };
+bool sumErr = false;
+uint8_t padReport[13] = { 0 };
 uint8_t prev_padReport[12] = { 0 };
 
 void loop() {
-  while (Serial2.available() <= 0 || Serial2.read() != 0xff)
+  while (Serial2.available() <= 0 || Serial2.read() != 0xaa)
     ;
-  int readAvailable = 0;
-  do {
-    readAvailable = Serial2.available();
-    if (readAvailable >= sizeof(padReport)) {
-      memcpy(prev_padReport, padReport, sizeof(padReport));
+  while(1) {
+    if (Serial2.available() >= sizeof(padReport)) {
+      if (!sumErr) memcpy(prev_padReport, padReport, sizeof(prev_padReport));
       Serial2.readBytes((char *)padReport, sizeof(padReport));
       char buffer[5];
+      uint8_t sum = 0;
       for (int i = 0; i < sizeof(padReport); i++) {
+        sum += padReport[i];
         sprintf(buffer, "%02X ", padReport[i]);
         Serial.print(buffer);
       }
-      Serial.println(readAvailable);
+      if (~sum != 0) {
+        sumErr = true;
+        Serial.println("Checksum ERROR! Skipping report.");
+        return;
+      }
+      sumErr = false;
+      Serial.println(Serial2.available());
+      break;
     }
-  } while (readAvailable < sizeof(padReport));
+  }
 
   // Bluetooth
   if (bleGamepad.isConnected()) {
