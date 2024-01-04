@@ -222,7 +222,6 @@ void vdr_report_received(tuh_xfer_t *xfer)
   // Note: not all field in xfer is available for use (i.e filled by tinyusb stack) in callback to save sram
   // For instance, xfer->buffer is NULL. We have used user_data to store buffer when submitted callback
   uint8_t *buf = (uint8_t *)xfer->user_data;
-  uint8_t *input_buf = &buf[4];
 
   if (xfer->result == XFER_RESULT_SUCCESS)
   {
@@ -276,13 +275,16 @@ void vdr_report_received(tuh_xfer_t *xfer)
     }
     else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
     {
+      buf[5] = 0xff;
+      fwrite(buf+5, 13, 1, stdout);
+      fflush(stdout);
       /*
       printf("EP: %02x Data:\r\n", tu_edpt_number(xfer->ep_addr));
-      for (uint32_t i = 2; i <= 5; i++)
+      for (uint32_t i = 6; i <= 9; i++)
       {
-        printf("%02X ", input_buf[i]);
+        printf("%02X ", buf[i]);
       }
-      printf("Lx:%d,Ly:%d\r\n", *((int16_t *)(input_buf + 6)), *((int16_t *)(input_buf + 8)));
+      printf("Lx:%d,Ly:%d\r\n", *((int16_t *)(input_buf + 10)), *((int16_t *)(input_buf + 12)));
       */
     }
   }
