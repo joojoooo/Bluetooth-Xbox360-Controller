@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <BleGamepad.h>
-#include <SPI.h>
 
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
 #define numOfButtons 16
