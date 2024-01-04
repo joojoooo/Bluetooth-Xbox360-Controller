@@ -275,17 +275,13 @@ void vdr_report_received(tuh_xfer_t *xfer)
     }
     else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
     {
-      buf[5] = 0xff;
-      fwrite(buf+5, 13, 1, stdout);
+      buf[5] = 0xaa;
+      uint8_t sum = 0;
+      for (size_t i = 6; i <= 17; i++)
+        sum += buf[i];
+      buf[18] = ~sum;
+      fwrite(buf+5, 14, 1, stdout);
       fflush(stdout);
-      /*
-      printf("EP: %02x Data:\r\n", tu_edpt_number(xfer->ep_addr));
-      for (uint32_t i = 6; i <= 9; i++)
-      {
-        printf("%02X ", buf[i]);
-      }
-      printf("Lx:%d,Ly:%d\r\n", *((int16_t *)(input_buf + 10)), *((int16_t *)(input_buf + 12)));
-      */
     }
   }
 

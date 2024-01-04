@@ -39,7 +39,7 @@ void loop() {
       Serial2.readBytes((char *)padReport, sizeof(padReport));
       char buffer[5];
       uint8_t sum = 0;
-      for (int i = 0; i < sizeof(padReport); i++) {
+      for (size_t i = 0; i < sizeof(padReport); i++) {
         sum += padReport[i];
         sprintf(buffer, "%02X ", padReport[i]);
         Serial.print(buffer);
