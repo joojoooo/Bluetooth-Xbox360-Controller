@@ -5,20 +5,20 @@
 #define numOfButtons 16
 #define numOfHatSwitches 4
 
-BleGamepad bleGamepad("jojo Gamepad", "Dio");
+BleGamepad bleGamepad("jojo pad", "dio");
 BleGamepadConfiguration bleGamepadConfig;
 
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
+  //Serial.println("Starting Xbox 360 Wireless to BLE gamepad!");
   Serial2.begin(115200, SERIAL_8N1, 16, 17);
-  Serial.println("Starting BLE work!");
   bleGamepadConfig.setAutoReport(false);
   bleGamepadConfig.setControllerType(CONTROLLER_TYPE_GAMEPAD);  // CONTROLLER_TYPE_JOYSTICK, CONTROLLER_TYPE_GAMEPAD (DEFAULT), CONTROLLER_TYPE_MULTI_AXIS
   bleGamepadConfig.setButtonCount(numOfButtons);
   bleGamepadConfig.setHatSwitchCount(numOfHatSwitches);
   bleGamepadConfig.setVid(0xe502);
   bleGamepadConfig.setPid(0xbbab);
-  // Some non-Windows operating systems and web based gamepad testers don't like min axis set below 0, so 0 is set by default
+  // Some non-Windows operating systems and web based gamepad testers don't like min axis set below 0
   bleGamepadConfig.setAxesMin(0x8000);  // -32768 --> int16_t - 16 bit signed integer - Can be in decimal or hexadecimal
   //bleGamepadConfig.setAxesMin(0x0000);  // 0 --> int16_t - 16 bit signed integer - Can be in decimal or hexadecimal
   bleGamepadConfig.setAxesMax(0x7FFF);  // 32767 --> int16_t - 16 bit signed integer - Can be in decimal or hexadecimal
@@ -32,24 +32,25 @@ uint8_t prev_padReport[12] = { 0 };
 void loop() {
   while (Serial2.available() <= 0 || Serial2.read() != 0xaa)
     ;
-  while(1) {
+  while (1) {
     if (Serial2.available() >= sizeof(padReport)) {
       if (!sumErr) memcpy(prev_padReport, padReport, sizeof(prev_padReport));
       Serial2.readBytes((char *)padReport, sizeof(padReport));
-      char buffer[5];
       uint8_t sum = 0;
       for (size_t i = 0; i < sizeof(padReport); i++) {
         sum += padReport[i];
+        /*char buffer[5];
         sprintf(buffer, "%02X ", padReport[i]);
-        Serial.print(buffer);
+        Serial.print(buffer);*/
       }
-      if (~sum != 0) {
+      if (sum != 0xff) {
         sumErr = true;
-        Serial.println("Checksum ERROR! Skipping report.");
+        //Serial.print("Checksum ERROR! sum: ");
+        //Serial.println(sum, HEX);
         return;
       }
       sumErr = false;
-      Serial.println(Serial2.available());
+      //Serial.println(Serial2.available());
       break;
     }
   }
@@ -86,34 +87,5 @@ void loop() {
     long ry = (long)-(*((int16_t *)(padReport + 10)));
     bleGamepad.setAxes(map(lx, -32768, 32767, 0, 32767), map(ly, -32768, 32767, 0, 32767), 0, 0, map(rx, -32768, 32767, 0, 32767), map(ry, -32768, 32767, 0, 32767));
     bleGamepad.sendReport();*/
-    /*int i = 4;
-    Serial.println(i);
-    bleGamepad.press(i);
-    bleGamepad.sendReport();
-    delay(1000);
-    bleGamepad.release(i);
-    bleGamepad.sendReport();
-    delay(1000);
-    i = 1;
-    Serial.println(i);
-    bleGamepad.press(i);
-    bleGamepad.sendReport();
-    delay(500);
-    bleGamepad.release(i);
-    bleGamepad.sendReport();
-    delay(1000);
-    // 1A 2B 4X 5Y
-
-    Serial.println("Move all axis simultaneously from min to max");
-    int mid = (bleGamepadConfig.getAxesMax() - bleGamepadConfig.getAxesMin()) / 2;
-    for (i = bleGamepadConfig.getAxesMin(); i < bleGamepadConfig.getAxesMax(); i += (bleGamepadConfig.getAxesMax() / 256) + 1) {
-      bleGamepad.setAxes(i, mid, 0, 0, mid, mid);
-      bleGamepad.sendReport();
-      delay(10);
-    }
-    bleGamepad.setAxes(mid, mid, 0, 0, mid, mid);
-    bleGamepad.sendReport();
-
-    delay(1000);*/
   }
 }

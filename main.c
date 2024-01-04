@@ -280,7 +280,7 @@ void vdr_report_received(tuh_xfer_t *xfer)
       for (size_t i = 6; i <= 17; i++)
         sum += buf[i];
       buf[18] = ~sum;
-      fwrite(buf+5, 14, 1, stdout);
+      fwrite(buf + 5, 14, 1, stdout);
       fflush(stdout);
     }
   }
