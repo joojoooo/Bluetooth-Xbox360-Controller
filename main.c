@@ -4,6 +4,9 @@
 
 #include "bsp/board.h"
 #include "tusb.h"
+#include "pico/stdlib.h"
+#include "pico/binary_info.h"
+#include "hardware/spi.h"
 
 #define BUF_COUNT 8
 
@@ -22,13 +25,25 @@ uint8_t *get_vdr_buf(uint8_t daddr);
 
 int main(void)
 {
+#if !defined(spi_default) || !defined(PICO_DEFAULT_SPI_SCK_PIN) || !defined(PICO_DEFAULT_SPI_TX_PIN) || !defined(PICO_DEFAULT_SPI_RX_PIN) || !defined(PICO_DEFAULT_SPI_CSN_PIN)
+#warning spi/spi_master example requires a board with SPI pins
+#else
   board_init();
+  // Enable SPI 0 at 1 MHz and connect to GPIOs
+  spi_init(spi_default, 1000 * 1000);
+  spi_set_format(spi_default, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
+  gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+  gpio_set_function(PICO_DEFAULT_SPI_CSN_PIN, GPIO_FUNC_SPI);
+  bi_decl(bi_4pins_with_func(PICO_DEFAULT_SPI_RX_PIN, PICO_DEFAULT_SPI_TX_PIN, PICO_DEFAULT_SPI_SCK_PIN, PICO_DEFAULT_SPI_CSN_PIN, GPIO_FUNC_SPI));
   tuh_init(BOARD_TUH_RHPORT);
   while (1)
   {
     tuh_task();
   }
   return 0;
+#endif
 }
 
 void print_device_descriptor(tuh_xfer_t *xfer)
@@ -275,13 +290,11 @@ void vdr_report_received(tuh_xfer_t *xfer)
     }
     else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
     {
-      buf[5] = 0xaa;
       uint8_t sum = 0;
       for (size_t i = 6; i <= 17; i++)
         sum += buf[i];
       buf[18] = ~sum;
-      fwrite(buf + 5, 14, 1, stdout);
-      fflush(stdout);
+      spi_write_blocking(spi_default, buf + 6, 13);
     }
   }
 

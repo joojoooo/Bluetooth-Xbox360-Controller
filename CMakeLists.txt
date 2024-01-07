@@ -35,7 +35,7 @@ target_include_directories(gamepad PUBLIC
 
 # In addition to pico_stdlib required for common PicoSDK functionality, add dependency on tinyusb_host
 # for TinyUSB device support and tinyusb_board for the additional board support library used by the example
-target_link_libraries(gamepad PUBLIC pico_stdlib tinyusb_host tinyusb_board)
+target_link_libraries(gamepad PUBLIC pico_stdlib hardware_spi tinyusb_host tinyusb_board)
 
 # create map/bin/hex file etc.
 pico_add_extra_outputs(gamepad)
