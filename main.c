@@ -28,6 +28,7 @@ uint16_t count_interface_total_len(tusb_desc_interface_t const *desc_itf, uint8_
 void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, uint16_t max_len);
 void vdr_report_received(tuh_xfer_t *xfer);
 uint8_t *get_vdr_buf(uint8_t daddr);
+void poweroff_task();
 
 int main(void)
 {
