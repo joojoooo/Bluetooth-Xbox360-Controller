@@ -9,6 +9,7 @@
 #include "hardware/spi.h"
 
 #define BUF_COUNT 8
+#define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
 
 tusb_desc_device_t desc_device;
 
@@ -295,6 +296,46 @@ void vdr_report_received(tuh_xfer_t *xfer)
         sum += buf[i];
       buf[18] = ~sum;
       spi_write_blocking(spi_default, buf + 6, 13);
+      // If XBOX button pressed for 5sec, power off controller
+      const uint32_t interval_ms = 5000;
+      static uint32_t start_press_ms = 0;
+      static bool xbox_was_pressed = false;
+      if (CHECK_BIT(buf[7], 2))
+      {
+        if (!xbox_was_pressed)
+          start_press_ms = board_millis();
+        xbox_was_pressed = true;
+      }
+      else
+      {
+        xbox_was_pressed = false;
+      }
+      if (xbox_was_pressed && board_millis() - start_press_ms > interval_ms)
+      {
+        xbox_was_pressed = false;
+        command_buf[0] = 0x00;
+        command_buf[1] = 0x00;
+        command_buf[2] = 0x08;
+        command_buf[3] = 0xC0;
+        command_buf[4] = 0x00;
+        command_buf[5] = 0x00;
+        command_buf[6] = 0x00;
+        command_buf[7] = 0x00;
+        command_buf[8] = 0x00;
+        command_buf[9] = 0x00;
+        command_buf[10] = 0x00;
+        command_buf[11] = 0x00;
+        tuh_xfer_t xfer =
+            {
+                .daddr = 1,
+                .ep_addr = 0x01,
+                .buflen = sizeof(command_buf),
+                .buffer = command_buf,
+                .complete_cb = NULL,
+                .user_data = 0,
+            };
+        tuh_edpt_xfer(&xfer);
+      }
     }
   }
 
