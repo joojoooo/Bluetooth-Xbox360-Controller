@@ -14,9 +14,14 @@
 tusb_desc_device_t desc_device;
 
 uint8_t command_buf[12] = {0};
+uint8_t no_controller_report[13] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff};
 uint8_t temp_buf[321];
 uint8_t buf_pool[BUF_COUNT][64];
 uint8_t buf_owner[BUF_COUNT] = {0};
+
+const uint32_t poweroff_interval_ms = 3000;
+uint32_t poweroff_start_press_ms = 0;
+bool poweroff_pressed = false;
 
 void parse_config_descriptor(uint8_t dev_addr, tusb_desc_configuration_t const *desc_cfg);
 uint16_t count_interface_total_len(tusb_desc_interface_t const *desc_itf, uint8_t itf_count, uint16_t max_len);
@@ -42,6 +47,7 @@ int main(void)
   while (1)
   {
     tuh_task();
+    poweroff_task();
   }
   return 0;
 #endif
@@ -184,17 +190,8 @@ void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, ui
     {
       // Inquiry pad presence
       command_buf[0] = 0x08;
-      command_buf[1] = 0x00;
       command_buf[2] = 0x0F;
       command_buf[3] = 0xC0;
-      command_buf[4] = 0x00;
-      command_buf[5] = 0x00;
-      command_buf[6] = 0x00;
-      command_buf[7] = 0x00;
-      command_buf[8] = 0x00;
-      command_buf[9] = 0x00;
-      command_buf[10] = 0x00;
-      command_buf[11] = 0x00;
       tuh_xfer_t xfer =
           {
               .daddr = daddr,
@@ -266,17 +263,8 @@ void vdr_report_received(tuh_xfer_t *xfer)
         */
         // Gamepad connected, turn LEDs off
         command_buf[0] = 0x00;
-        command_buf[1] = 0x00;
         command_buf[2] = 0x08;
         command_buf[3] = 0x40;
-        command_buf[4] = 0x00;
-        command_buf[5] = 0x00;
-        command_buf[6] = 0x00;
-        command_buf[7] = 0x00;
-        command_buf[8] = 0x00;
-        command_buf[9] = 0x00;
-        command_buf[10] = 0x00;
-        command_buf[11] = 0x00;
         tuh_xfer_t xfer =
             {
                 .daddr = 1,
@@ -297,44 +285,17 @@ void vdr_report_received(tuh_xfer_t *xfer)
       buf[18] = ~sum;
       spi_write_blocking(spi_default, buf + 6, 13);
       // If XBOX button pressed for 5sec, power off controller
-      const uint32_t interval_ms = 5000;
-      static uint32_t start_press_ms = 0;
-      static bool xbox_was_pressed = false;
       if (CHECK_BIT(buf[7], 2))
       {
-        if (!xbox_was_pressed)
-          start_press_ms = board_millis();
-        xbox_was_pressed = true;
+        if (!poweroff_pressed)
+        {
+          poweroff_start_press_ms = board_millis();
+          poweroff_pressed = true;
+        }
       }
       else
       {
-        xbox_was_pressed = false;
-      }
-      if (xbox_was_pressed && board_millis() - start_press_ms > interval_ms)
-      {
-        xbox_was_pressed = false;
-        command_buf[0] = 0x00;
-        command_buf[1] = 0x00;
-        command_buf[2] = 0x08;
-        command_buf[3] = 0xC0;
-        command_buf[4] = 0x00;
-        command_buf[5] = 0x00;
-        command_buf[6] = 0x00;
-        command_buf[7] = 0x00;
-        command_buf[8] = 0x00;
-        command_buf[9] = 0x00;
-        command_buf[10] = 0x00;
-        command_buf[11] = 0x00;
-        tuh_xfer_t xfer =
-            {
-                .daddr = 1,
-                .ep_addr = 0x01,
-                .buflen = sizeof(command_buf),
-                .buffer = command_buf,
-                .complete_cb = NULL,
-                .user_data = 0,
-            };
-        tuh_edpt_xfer(&xfer);
+        poweroff_pressed = false;
       }
     }
   }
@@ -342,6 +303,28 @@ void vdr_report_received(tuh_xfer_t *xfer)
   xfer->buflen = 64;
   xfer->buffer = buf;
   tuh_edpt_xfer(xfer);
+}
+
+void poweroff_task()
+{
+  if (poweroff_pressed && board_millis() - poweroff_start_press_ms > poweroff_interval_ms)
+  {
+    poweroff_pressed = false;
+    command_buf[0] = 0x00;
+    command_buf[2] = 0x08;
+    command_buf[3] = 0xC0;
+    tuh_xfer_t xfer =
+        {
+            .daddr = 1,
+            .ep_addr = 0x01,
+            .buflen = sizeof(command_buf),
+            .buffer = command_buf,
+            .complete_cb = NULL,
+            .user_data = 0,
+        };
+    tuh_edpt_xfer(&xfer);
+    spi_write_blocking(spi_default, no_controller_report, sizeof(no_controller_report));
+  }
 }
 
 uint8_t *get_vdr_buf(uint8_t daddr)
@@ -376,4 +359,5 @@ void tuh_mount_cb(uint8_t daddr)
 void tuh_umount_cb(uint8_t daddr)
 {
   free_vdr_buf(daddr);
+  spi_write_blocking(spi_default, no_controller_report, sizeof(no_controller_report));
 }
