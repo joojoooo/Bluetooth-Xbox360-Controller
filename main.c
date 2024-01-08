@@ -241,7 +241,11 @@ void vdr_report_received(tuh_xfer_t *xfer)
   {
     if (xfer->actual_len >= 2 && buf[0] & 0x08)
     {
-      if ((buf[1] & 0x80) != 0)
+      if ((buf[1] & 0x80) == 0)
+      {
+        spi_write_blocking(spi_default, no_controller_report, sizeof(no_controller_report));
+      }
+      else
       {
         /*
         Set LEDs buf[3] = 0x40 + number below
