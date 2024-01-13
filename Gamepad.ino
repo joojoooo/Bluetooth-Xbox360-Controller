@@ -45,7 +45,6 @@ void loop() {
       sum += padReport[i];
     if (sum != 0xff)
       return;
-
     // BLE GAMEPAD
     if (bleGamepad.isConnected()) {
       // DPAD
@@ -69,28 +68,17 @@ void loop() {
         bleGamepad.setHat1(DPAD_CENTERED);
       }
       // BUTTONS
-      // A
-      BUTTON(padReport[1], 4, 1);
-      // B
-      BUTTON(padReport[1], 5, 2);
-      // X
-      BUTTON(padReport[1], 6, 4);
-      // Y
-      BUTTON(padReport[1], 7, 5);
-      // LB
-      BUTTON(padReport[1], 0, 7);
-      // RB
-      BUTTON(padReport[1], 1, 8);
-      // BACK
-      BUTTON(padReport[0], 5, 11);
-      // START
-      BUTTON(padReport[0], 4, 12);
-      // XBOX
-      BUTTON(padReport[1], 2, 13);
-      // L3
-      BUTTON(padReport[0], 6, 14);
-      // R3
-      BUTTON(padReport[0], 7, 15);
+      BUTTON(padReport[1], 4, 1);   // A
+      BUTTON(padReport[1], 5, 2);   // B
+      BUTTON(padReport[1], 6, 4);   // X
+      BUTTON(padReport[1], 7, 5);   // Y
+      BUTTON(padReport[1], 0, 7);   // LB
+      BUTTON(padReport[1], 1, 8);   // RB
+      BUTTON(padReport[0], 5, 11);  // BACK
+      BUTTON(padReport[0], 4, 12);  // START
+      BUTTON(padReport[1], 2, 13);  // XBOX
+      BUTTON(padReport[0], 6, 14);  // L3
+      BUTTON(padReport[0], 7, 15);  // R3
       // TRIGGERS
       long x, y;
       x = (long)(*((uint8_t *)(padReport + 2)));

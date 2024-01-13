@@ -19,16 +19,19 @@ uint8_t temp_buf[321];
 uint8_t buf_pool[BUF_COUNT][64];
 uint8_t buf_owner[BUF_COUNT] = {0};
 
-const uint32_t poweroff_interval_ms = 3000;
+const uint32_t combo_interval_ms = 3000;
 uint32_t poweroff_start_press_ms = 0;
 bool poweroff_pressed = false;
+uint32_t swapabxy_start_press_ms = 0;
+bool swapabxy_pressed = false;
+bool swapabxy = false; // (Nintendo switch mode)
 
 void parse_config_descriptor(uint8_t dev_addr, tusb_desc_configuration_t const *desc_cfg);
 uint16_t count_interface_total_len(tusb_desc_interface_t const *desc_itf, uint8_t itf_count, uint16_t max_len);
 void open_vdr_interface(uint8_t daddr, tusb_desc_interface_t const *desc_itf, uint16_t max_len);
 void vdr_report_received(tuh_xfer_t *xfer);
 uint8_t *get_vdr_buf(uint8_t daddr);
-void poweroff_task();
+void check_btns_task();
 
 int main(void)
 {
@@ -48,7 +51,7 @@ int main(void)
   while (1)
   {
     tuh_task();
-    poweroff_task();
+    check_btns_task();
   }
   return 0;
 #endif
@@ -266,7 +269,7 @@ void vdr_report_received(tuh_xfer_t *xfer)
         14: persistent slow all blink
         15: blink once, then previous setting
         */
-        // Gamepad connected, turn LEDs off
+        // Gamepad connected, set LEDs
         command_buf[0] = 0x00;
         command_buf[2] = 0x08;
         command_buf[3] = 0x40;
@@ -284,13 +287,8 @@ void vdr_report_received(tuh_xfer_t *xfer)
     }
     else if (xfer->actual_len >= 29 && buf[1] == 0x01 && buf[4] == 0x00)
     {
-      uint8_t sum = 0;
-      for (size_t i = 6; i <= 17; i++)
-        sum += buf[i];
-      buf[18] = ~sum;
-      spi_write_blocking(spi_default, buf + 6, 13);
-      // If XBOX button pressed for 5sec, power off controller
-      if (CHECK_BIT(buf[7], 2))
+      // If XBOX button pressed for 3sec, power off controller
+      if (CHECK_BIT(buf[7], 2) && !CHECK_BIT(buf[7], 4))
       {
         if (!poweroff_pressed)
         {
@@ -302,6 +300,33 @@ void vdr_report_received(tuh_xfer_t *xfer)
       {
         poweroff_pressed = false;
       }
+      // If XBOX+A buttons pressed for 3sec, swap AB XY (Nintendo switch mode)
+      if (CHECK_BIT(buf[7], 2) && CHECK_BIT(buf[7], 4))
+      {
+        if (!swapabxy_pressed)
+        {
+          swapabxy_start_press_ms = board_millis();
+          swapabxy_pressed = true;
+        }
+      }
+      else
+      {
+        swapabxy_pressed = false;
+      }
+      if (swapabxy)
+      {
+        // Swap bits 4<->5 6<->7 in buf[7]
+        uint8_t b = buf[7];
+        uint8_t x = ((b >> 4) ^ (b >> 5)) & 0x01;
+        b = b ^ ((x << 4) | (x << 5));
+        x = ((b >> 6) ^ (b >> 7)) & 0x01;
+        buf[7] = b ^ ((x << 6) | (x << 7));
+      }
+      uint8_t sum = 0;
+      for (size_t i = 6; i <= 17; i++)
+        sum += buf[i];
+      buf[18] = ~sum;
+      spi_write_blocking(spi_default, buf + 6, 13);
     }
   }
 
@@ -310,25 +335,71 @@ void vdr_report_received(tuh_xfer_t *xfer)
   tuh_edpt_xfer(xfer);
 }
 
-void poweroff_task()
+void poweroff_done(tuh_xfer_t *x)
 {
-  if (poweroff_pressed && board_millis() - poweroff_start_press_ms > poweroff_interval_ms)
+  spi_write_blocking(spi_default, no_controller_report, sizeof(no_controller_report));
+}
+
+void poweroff(tuh_xfer_t *x)
+{
+  command_buf[0] = 0x00;
+  command_buf[2] = 0x08;
+  command_buf[3] = 0xC0;
+  tuh_xfer_t xfer =
+      {
+          .daddr = 1,
+          .ep_addr = 0x01,
+          .buflen = sizeof(command_buf),
+          .buffer = command_buf,
+          .complete_cb = poweroff_done,
+          .user_data = 0,
+      };
+  tuh_edpt_xfer(&xfer);
+}
+
+void swap_abxy(tuh_xfer_t *x)
+{
+  swapabxy = !swapabxy;
+  poweroff(NULL);
+}
+
+void check_btns_task()
+{
+  if (poweroff_pressed && board_millis() - poweroff_start_press_ms > combo_interval_ms)
   {
     poweroff_pressed = false;
+    // Blink once to signal poweroff
     command_buf[0] = 0x00;
     command_buf[2] = 0x08;
-    command_buf[3] = 0xC0;
+    command_buf[3] = 0x4F;
     tuh_xfer_t xfer =
         {
             .daddr = 1,
             .ep_addr = 0x01,
             .buflen = sizeof(command_buf),
             .buffer = command_buf,
-            .complete_cb = NULL,
+            .complete_cb = poweroff,
             .user_data = 0,
         };
     tuh_edpt_xfer(&xfer);
-    spi_write_blocking(spi_default, no_controller_report, sizeof(no_controller_report));
+  }
+  if (swapabxy_pressed && board_millis() - swapabxy_start_press_ms > combo_interval_ms)
+  {
+    swapabxy_pressed = false;
+    // Blink all to signal swap
+    command_buf[0] = 0x00;
+    command_buf[2] = 0x08;
+    command_buf[3] = 0x41;
+    tuh_xfer_t xfer =
+        {
+            .daddr = 1,
+            .ep_addr = 0x01,
+            .buflen = sizeof(command_buf),
+            .buffer = command_buf,
+            .complete_cb = swap_abxy,
+            .user_data = 0,
+        };
+    tuh_edpt_xfer(&xfer);
   }
 }
 
