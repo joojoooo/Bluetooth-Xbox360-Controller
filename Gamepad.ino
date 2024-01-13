@@ -3,8 +3,9 @@
 #include <ESP32SPISlave.h>
 
 #define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
+#define BUTTON(var, pos, btn) CHECK_BIT(var, pos) ? bleGamepad.press(btn) : bleGamepad.release(btn)
 
-BleGamepad bleGamepad("jojo pad", "dio");
+BleGamepad bleGamepad("jojo", "dio");
 BleGamepadConfiguration bleGamepadConfig;
 
 ESP32SPISlave slave;
@@ -39,11 +40,11 @@ const long deadZoneHigh = 3072;
 void loop() {
   slave.wait(padReport, sizeof(padReport));
   while (slave.available()) {
+    sum = 0;
     for (size_t i = 0; i < sizeof(padReport); i++)
       sum += padReport[i];
     if (sum != 0xff)
       return;
-    sum = 0;
 
     // BLE GAMEPAD
     if (bleGamepad.isConnected()) {
@@ -69,60 +70,27 @@ void loop() {
       }
       // BUTTONS
       // A
-      if (CHECK_BIT(padReport[1], 4))
-        bleGamepad.press(1);
-      else
-        bleGamepad.release(1);
+      BUTTON(padReport[1], 4, 1);
       // B
-      if (CHECK_BIT(padReport[1], 5))
-        bleGamepad.press(2);
-      else
-        bleGamepad.release(2);
+      BUTTON(padReport[1], 5, 2);
       // X
-      if (CHECK_BIT(padReport[1], 6))
-        bleGamepad.press(4);
-      else
-        bleGamepad.release(4);
+      BUTTON(padReport[1], 6, 4);
       // Y
-      if (CHECK_BIT(padReport[1], 7))
-        bleGamepad.press(5);
-      else
-        bleGamepad.release(5);
+      BUTTON(padReport[1], 7, 5);
       // LB
-      if (CHECK_BIT(padReport[1], 0))
-        bleGamepad.press(7);
-      else
-        bleGamepad.release(7);
+      BUTTON(padReport[1], 0, 7);
       // RB
-      if (CHECK_BIT(padReport[1], 1))
-        bleGamepad.press(8);
-      else
-        bleGamepad.release(8);
+      BUTTON(padReport[1], 1, 8);
       // BACK
-      if (CHECK_BIT(padReport[0], 5))
-        bleGamepad.press(11);
-      else
-        bleGamepad.release(11);
+      BUTTON(padReport[0], 5, 11);
       // START
-      if (CHECK_BIT(padReport[0], 4))
-        bleGamepad.press(12);
-      else
-        bleGamepad.release(12);
+      BUTTON(padReport[0], 4, 12);
       // XBOX
-      if (CHECK_BIT(padReport[1], 2))
-        bleGamepad.press(13);
-      else
-        bleGamepad.release(13);
+      BUTTON(padReport[1], 2, 13);
       // L3
-      if (CHECK_BIT(padReport[0], 6))
-        bleGamepad.press(14);
-      else
-        bleGamepad.release(14);
+      BUTTON(padReport[0], 6, 14);
       // R3
-      if (CHECK_BIT(padReport[0], 7))
-        bleGamepad.press(15);
-      else
-        bleGamepad.release(15);
+      BUTTON(padReport[0], 7, 15);
       // TRIGGERS
       long x, y;
       x = (long)(*((uint8_t *)(padReport + 2)));
