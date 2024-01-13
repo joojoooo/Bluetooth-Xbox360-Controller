@@ -21,16 +21,20 @@ void setup() {
   bleGamepadConfig.setHatSwitchCount(1);
   bleGamepadConfig.setWhichAxes(true, true, true, false, false, true, false, false);
   bleGamepadConfig.setWhichSimulationControls(false, false, true, true, false);
+  bleGamepadConfig.setSimulationMin(0);
+  bleGamepadConfig.setSimulationMax(255);
   bleGamepadConfig.setVid(0xe502);
   bleGamepadConfig.setPid(0xbbab);
-  bleGamepadConfig.setAxesMin(0);
-  //bleGamepadConfig.setAxesMin(-32768);
+  //bleGamepadConfig.setAxesMin(0);
+  bleGamepadConfig.setAxesMin(-32767);
   bleGamepadConfig.setAxesMax(32767);
   bleGamepad.begin(&bleGamepadConfig);
 }
 
 uint8_t sum = 0;
 uint8_t padReport[13] = { 0 };
+const long deadZoneLow = -3072;
+const long deadZoneHigh = 3072;
 
 void loop() {
   slave.wait(padReport, sizeof(padReport));
@@ -86,14 +90,14 @@ void loop() {
         bleGamepad.release(5);
       // LB
       if (CHECK_BIT(padReport[1], 0))
-        bleGamepad.press(9);
+        bleGamepad.press(7);
       else
-        bleGamepad.release(9);
+        bleGamepad.release(7);
       // RB
       if (CHECK_BIT(padReport[1], 1))
-        bleGamepad.press(10);
+        bleGamepad.press(8);
       else
-        bleGamepad.release(10);
+        bleGamepad.release(8);
       // BACK
       if (CHECK_BIT(padReport[0], 5))
         bleGamepad.press(11);
@@ -123,16 +127,40 @@ void loop() {
       long x, y;
       x = (long)(*((uint8_t *)(padReport + 2)));
       y = (long)(*((uint8_t *)(padReport + 3)));
-      bleGamepad.setBrake(map(x, 0, 255, 0, 32767));
-      bleGamepad.setAccelerator(map(y, 0, 255, 0, 32767));
+      bleGamepad.setBrake(x);
+      bleGamepad.setAccelerator(y);
       // LEFT THUMB
       x = (long)(*((int16_t *)(padReport + 4)));
       y = (long)(*((int16_t *)(padReport + 6)));
-      bleGamepad.setLeftThumb(map(x, -32768, 32767, 0, 32767), map(-y, -32768, 32767, 0, 32767));
+      if (x <= deadZoneLow)
+        x = map(x, deadZoneLow, -32768, 0, -32767);
+      else if (x >= deadZoneHigh)
+        x = map(x, deadZoneHigh, 32767, 0, 32767);
+      else
+        x = 0;
+      if (y <= deadZoneLow)
+        y = map(y, deadZoneLow, -32768, 0, -32767);
+      else if (y >= deadZoneHigh)
+        y = map(y, deadZoneHigh, 32767, 0, 32767);
+      else
+        y = 0;
+      bleGamepad.setLeftThumb(x, -y);
       // RIGHT THUMB
       x = (long)(*((int16_t *)(padReport + 8)));
       y = (long)(*((int16_t *)(padReport + 10)));
-      bleGamepad.setRightThumb(map(x, -32768, 32767, 0, 32767), map(-y, -32768, 32767, 0, 32767));
+      if (x <= deadZoneLow)
+        x = map(x, deadZoneLow, -32768, 0, -32767);
+      else if (x >= deadZoneHigh)
+        x = map(x, deadZoneHigh, 32767, 0, 32767);
+      else
+        x = 0;
+      if (y <= deadZoneLow)
+        y = map(y, deadZoneLow, -32768, 0, -32767);
+      else if (y >= deadZoneHigh)
+        y = map(y, deadZoneHigh, 32767, 0, 32767);
+      else
+        y = 0;
+      bleGamepad.setRightThumb(x, -y);
       // SEND REPORT
       bleGamepad.sendReport();
     }
