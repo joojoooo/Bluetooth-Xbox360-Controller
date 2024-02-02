@@ -1,8 +1,13 @@
 <h1 align="center">Bluetooth Xbox 360 Controller</h1>
 
-<p align="center">
-  <img src="img.png" height="500">
-</p>
+## Connections ##
+<img src="img.png" height=50% width=50%>
+
+## Video ##
+
+https://youtu.be/J1_S5z4gUoo
+
+[![Click to watch video](https://img.youtube.com/vi/J1_S5z4gUoo/0.jpg)](https://www.youtube.com/watch?v=J1_S5z4gUoo)
 
 ## :dart: About ##
 
