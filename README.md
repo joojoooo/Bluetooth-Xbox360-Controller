@@ -1,8 +1,5 @@
 <h1 align="center">Bluetooth Xbox 360 Controller</h1>
 
-## Connections ##
-<img src="img.png" height=50% width=50%>
-
 ## Video ##
 
 https://youtu.be/J1_S5z4gUoo
@@ -29,3 +26,15 @@ A Pi Pico W is a better alternative, it has both bluetooth and USB host support 
 - Connect the boards: SPI0 on the Pico to VSPI on the ESP32 (as in the picture)
 
 I glued the Pico under the ESP32, it fits perfectly.
+
+## Connections ##
+
+This is how the Pico and ESP32 are connected together:
+- Pico Vout (5V) is connected to ESP32 5V
+- Pico GND to ESP32 GND
+- Pico GPIO 17 to ESP32 GPIO 5
+- Pico GPIO 18 to ESP32 GPIO 18
+- Pico GPIO 19 to ESP32 GPIO 23
+- Serial UART connection is optional, for debug
+
+<img src="img.png" height=50% width=50%>
